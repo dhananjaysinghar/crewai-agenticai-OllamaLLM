@@ -113,12 +113,17 @@ async def on_message(message: cl.Message):
     result = await asyncio.to_thread(crew.kickoff)
 
     # --- Stream Each Agent's Result ---
-    memory["🔄 Reformulated"] = task_rephrase.output.raw
-    memory["📘 Answer"] = task_answer.output.raw
-    memory["🔍 Fact Check"] = task_factcheck.output.raw
-    memory["📝 Summary"] = task_summary.output.raw
+    await stream_response("🔄 Reformulated", task_rephrase.output.raw)
+    await stream_response("📘 Answer", task_answer.output.raw)
+    await stream_response("🔍 Fact Check", task_factcheck.output.raw)
+    await stream_response("📝 Summary", task_summary.output.raw)
 
-    for label, content in memory.items():
-        await stream_response(label, content)
+    # memory["🔄 Reformulated"] = task_rephrase.output.raw
+    # memory["📘 Answer"] = task_answer.output.raw
+    # memory["🔍 Fact Check"] = task_factcheck.output.raw
+    # memory["📝 Summary"] = task_summary.output.raw
+    #
+    # for label, content in memory.items():
+    #     await stream_response(label, content)
 
 #chainlit run /Users/dhananjayasamantasinghar/Desktop/test-python/src/test/test_pyspark/crewai_chatbot.py
