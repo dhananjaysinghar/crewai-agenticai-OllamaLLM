@@ -4,18 +4,13 @@ from crewai import Agent, Task, Crew
 from langchain_ollama import OllamaLLM
 from textwrap import dedent
 
-# 1. LLMs
+# LLMs
 llm_base = OllamaLLM(model="ollama/mistral")
 llm_streaming = OllamaLLM(model="mistral", streaming=True)
 
-
-# 2. Helper to send messages
-# async def send_msg(label: str, content: str, author: str = "🤖 Agent"):
-#     await cl.Message(content=f"{label} {content}", author=author).send()
-
-# Helper to stream messages
+# Streaming helper
 async def stream_response(agent_name: str, prompt: str):
-    msg = cl.Message(content="", author=f"📘 {agent_name}")
+    msg = cl.Message(content="", author=f"{agent_name}")
     await msg.send()
 
     full_text = ""
@@ -27,96 +22,101 @@ async def stream_response(agent_name: str, prompt: str):
     await msg.update()
     return full_text.strip()
 
-
-# 3. Chainlit + CrewAI Integration
 @cl.on_message
 async def on_message(message: cl.Message):
-    question = message.content
+    question = message.content.strip()
     await cl.Message(content=f"❓ Question: {question}").send()
 
-    # Define Agents
-    reformulate_agent = Agent(
+    memory = {}
+
+    # --- Agents ---
+    rephraser = Agent(
         role="Rephraser",
-        goal="Clarify user input for better understanding",
-        backstory="Expert in NLP and user intent analysis.",
+        goal="Clarify vague or ambiguous user questions",
+        backstory="An expert in user intent disambiguation and rephrasing.",
         verbose=True,
         allow_delegation=False,
         llm=llm_base,
     )
 
-    answer_agent = Agent(
+    answerer = Agent(
         role="Answer Generator",
-        goal="Generate clear and helpful answers to user questions.",
-        backstory="Trained on vast knowledge to answer accurately.",
+        goal="Provide a comprehensive and thoughtful answer",
+        backstory="A deep reasoning expert trained on a vast corpus of knowledge.",
         verbose=True,
         allow_delegation=False,
         llm=llm_base,
     )
 
-    fact_check_agent = Agent(
+    fact_checker = Agent(
         role="Fact Checker",
-        goal="Verify facts and cite sources when possible.",
-        backstory="Expert researcher with access to verified knowledge.",
+        goal="Ensure factual accuracy and provide credible sources",
+        backstory="An information analyst with strong attention to accuracy.",
         verbose=True,
         allow_delegation=False,
         llm=llm_base,
     )
 
-    summary_agent = Agent(
+    summarizer = Agent(
         role="Summarizer",
-        goal="Summarize key points including fact-checks.",
-        backstory="Summarizes answers with concise language.",
+        goal="Summarize the conversation in a useful, informative way",
+        backstory="A master at synthesis and TL;DRs.",
         verbose=True,
         allow_delegation=False,
         llm=llm_base,
     )
 
-    # Define Tasks
-    reformulate_task = Task(
-        description=f"Rephrase this question clearly: {question}",
-        agent=reformulate_agent,
-        expected_output="A clearly reworded question.",
+    # --- Tasks ---
+    task_rephrase = Task(
+        description=f"Rephrase the following user question for clarity:\n\n{question}",
+        agent=rephraser,
+        expected_output="A clearer version of the question for AI understanding.",
     )
 
-    answer_task = Task(
-        description="Generate a helpful and detailed answer to the question.",
-        agent=answer_agent,
-        expected_output="A helpful answer to the question.",
-        depends_on=[reformulate_task],
-    )
-
-    fact_check_task = Task(
-        description=dedent("""
-            Verify the accuracy of the answer and cite any relevant sources.
+    task_answer = Task(
+        description=dedent(f"""
+        Based on the rephrased question, give a detailed and thoughtful answer.
+        Wait for the Rephraser agent's output first.
         """),
-        agent=fact_check_agent,
-        expected_output="A verdict on accuracy with possible citations.",
-        depends_on=[answer_task],
+        agent=answerer,
+        expected_output="A thorough answer to the rephrased question.",
+        depends_on=[task_rephrase],
     )
 
-    summary_task = Task(
-        description=dedent("""
-            Summarize the answer and include fact-check results.
+    task_factcheck = Task(
+        description=dedent(f"""
+        Critically verify the answer generated and cite any sources you can infer.
+        Respond with a clear verdict and references.
         """),
-        agent=summary_agent,
-        expected_output="A concise summary with fact-check insights.",
-        depends_on=[fact_check_task],
+        agent=fact_checker,
+        expected_output="A fact-check summary with evidence.",
+        depends_on=[task_answer],
     )
 
-    # Create Crew
+    task_summary = Task(
+        description=dedent(f"""
+        Combine the answer and fact-checking into a short and useful summary.
+        """),
+        agent=summarizer,
+        expected_output="A TL;DR-style summary.",
+        depends_on=[task_factcheck],
+    )
+
+    # Crew config
     crew = Crew(
-        agents=[reformulate_agent, answer_agent, fact_check_agent, summary_agent],
-        tasks=[reformulate_task, answer_task, fact_check_task, summary_task],
+        agents=[rephraser, answerer, fact_checker, summarizer],
+        tasks=[task_rephrase, task_answer, task_factcheck, task_summary],
         verbose=False
     )
 
-    # Run CrewAI in a separate thread to avoid blocking Chainlit
+    # Execute CrewAI
     result = await asyncio.to_thread(crew.kickoff)
 
-    # Send results stage by stage
-    await stream_response("🔄 Reformulated", reformulate_task.output.raw)
-    await stream_response("📘 Answer", answer_task.output.raw)
-    await stream_response("🔍 Fact Check", fact_check_task.output.raw)
-    await stream_response("📝 Summary", summary_task.output.raw)
+    # --- Stream Each Agent's Result ---
+    memory["🔄 Reformulated"] = task_rephrase.output.raw
+    memory["📘 Answer"] = task_answer.output.raw
+    memory["🔍 Fact Check"] = task_factcheck.output.raw
+    memory["📝 Summary"] = task_summary.output.raw
 
-#  chainlit run /Users/dhananjayasamantasinghar/Desktop/test-python/src/test/test_pyspark/crewai_chatbot.py
+    for label, content in memory.items():
+        await stream_response(label, content)
