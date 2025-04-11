@@ -120,3 +120,5 @@ async def on_message(message: cl.Message):
 
     for label, content in memory.items():
         await stream_response(label, content)
+
+# chainlit run /Users/dhananjayasamantasinghar/Desktop/test-python/src/test/test_pyspark/crewai_chatbot.py
