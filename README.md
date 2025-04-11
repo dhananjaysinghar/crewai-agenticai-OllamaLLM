@@ -6,8 +6,9 @@ ollama pull mistral
 ollama run mistral
 
 pip install chainlit crewai langchain langchain_community langchain_ollama
+```
 
-```mermaid
+``` mermaid
 ---
 config:
   flowchart:
