@@ -8,6 +8,11 @@ ollama run mistral
 pip install chainlit crewai langchain langchain_community langchain_ollama
 
 ```mermaid
+---
+config:
+  flowchart:
+    curve: linear
+---
 graph TD
     UserInput["❓ User Question"]
     Rephraser["🔄 Rephraser Agent"]
